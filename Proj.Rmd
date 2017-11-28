@@ -1,0 +1,172 @@
+---
+title: "Practical Machine Learning - Course Project - Weight Lifting Exercise Pattern Analysis"
+output: html_document
+author: Prabin Shakya
+date: 11/28/2017
+---
+
+
+# Executive Summary
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. 
+
+In this project, our goal is to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants and quantify the accuracy of their exercise method
+
+By the end of this project, we were able to quantify the correctness of exercise done by 99.41% accuracy.
+
+# Analysis
+
+### Initialize Environment
+
+
+```{r echo = TRUE}
+library(caret)
+library(gbm)
+setwd("H:\\_R\\Course_8\\Week 4\\Proj")
+
+```
+
+### Read the Downloaded Data
+
+```{r echo = TRUE}
+pml_training <- read.csv("Data\\pml-training.csv",na.strings = c("NA","","#DIV/0!"))
+pml_testing <- read.csv("Data\\pml-testing.csv",na.strings = c("NA","","#DIV/0!"))
+
+dim(pml_training)
+
+dim(pml_testing)
+
+# summary(pml_training)
+
+```
+
+
+### Data Cleansing
+
+Most of the columns have over 19000 values as NAs as seen below. We will filter out those columns and not use them in the model.
+
+```{r echo = TRUE}
+
+colSums(is.na(pml_training))
+
+# Remove the column if there are more than
+pml_trainingFiltered <- pml_training[, colSums(is.na(pml_training))==0]
+
+# Do the same for testing
+pml_testingFiltered <- pml_testing[, colSums(is.na(pml_testing))==0]
+
+
+```
+
+Also Remove the columns up front which will not be used in the model. These are subject information along with window and timestamp for the data observations.
+```{r echo = TRUE}
+
+# Remove the column if there are more than
+pml_trainingFiltered <- pml_trainingFiltered[, -c(1:7)]
+
+
+# Do the same for testing
+pml_testingFiltered <- pml_testingFiltered[, -c(1:7)]
+```
+
+# Prediction Model Development
+
+### Prediction Modeling
+
+We will partition the training data such that validation can be performed. We will run 3 seperate models using random forest, boosting and linear methods. We will combine the outcome from the three models to come up with a final prediction model.
+
+```{r echo = TRUE}
+
+inTrain = createDataPartition(pml_trainingFiltered$classe, p=3/4)[[1]]
+training = pml_trainingFiltered[inTrain,]
+testing = pml_trainingFiltered[-inTrain,]
+
+set.seed(62433)
+
+# Note: Caching the model to make the report run faster
+if(!exists("myMod_rf"))
+{
+  myMod_rf <- train(classe~.,data=training,method="rf")
+}
+
+# Note: Caching the model to make the report run faster
+if(!exists("myMod_gbm"))
+{
+  myMod_gbm <- train(classe~.,data=training,method="gbm")
+}
+
+# Note: Caching the model to make the report run faster.
+if(!exists("myMod_lda"))
+{
+  myMod_lda <- train(classe~.,data=training,method="lda")
+}
+
+# Run Predictions
+pred_rf <- predict(myMod_rf,testing)
+pred_gbm <- predict(myMod_gbm,testing)
+pred_lda <- predict(myMod_lda,testing)
+
+# Create Combined Data
+combined_Data <- data.frame(pred_rf,pred_gbm,pred_lda,testing$classe)
+
+# Note: Caching the models to make the report run faster.
+if(!exists("myMod_combine"))
+{
+  myMod_combine <- train(testing.classe~.,data=combined_Data,method='rf')
+}
+
+# Validated Prediction
+pred_comb <- predict(myMod_combine,combined_Data)
+
+```
+
+### Prediction Accuracy
+
+Now we are measuring the accuracy of each models. 
+
+```{r echo = TRUE}
+
+accuracy <- data.frame(
+  rf = confusionMatrix(pred_rf,testing$classe)$overall[1],
+  gbm = confusionMatrix(pred_gbm,testing$classe)$overall[1],
+  lda = confusionMatrix(pred_lda,testing$classe)$overall[1],
+  combined = confusionMatrix(pred_comb,testing$classe)$overall[1]
+)
+
+accuracy
+
+```
+
+
+The accuracy figures above show that Random Forest and the Combined model has the highest accuragy among the models analyzed.
+
+# Prediction Quiz
+
+Next we will predict the classe values for PML_Testing data of 20 observations.
+
+```{r echo = TRUE}
+
+pred_rf <- predict(myMod_rf,pml_testingFiltered)
+pred_gbm <- predict(myMod_gbm,pml_testingFiltered)
+pred_lda <- predict(myMod_lda,pml_testingFiltered)
+combined_test_Data <- data.frame(pred_rf,pred_gbm,pred_lda,pml_testingFiltered$problem_id)
+
+pred_test_comb <- predict(myMod_combine,combined_test_Data)
+
+combined_test_Data <-data.frame(pred_rf,pred_gbm,pred_lda,pred_test_comb,pml_testingFiltered$problem_id)
+
+combined_test_Data
+
+```
+
+Combined prediction model will be used for the quiz.
+
+# Conclusion
+
+Hence, we were able to use Machine Learning techinques to successfully analyze and run predictions for the weight lifting exercise data set provided.
+
+# Reference
+
+Velloso, E.; Bulling, A.; Gellersen, H.; Ugulino, W.; Fuks, H. Qualitative Activity Recognition of Weight Lifting Exercises. Proceedings of 4th International Conference in Cooperation with SIGCHI (Augmented Human '13) . Stuttgart, Germany: ACM SIGCHI, 2013.
+
+http://web.archive.org/web/20161224072740/http:/groupware.les.inf.puc-rio.br/har
